@@ -1,0 +1,403 @@
+# ADHealthCheckv1.1
+#############################################################################
+#       Author: Vikas Sukhija
+#       Updated: Pablo Villaronga
+#       Date: 11/06/2019
+#       Satus: Ping,Netlogon,NTDS,DNS,DCdiag Test(Replication,sysvol,Services)
+#       Update: Added Advertising
+#       Description: AD Health Status
+<#########################################################################
+EU Technical Health Check Script
+
+Tested on:
+- Windows Server 2008 R2 SP1
+- Windows Server 2012 R2
+- Windows Server 2016
+- Windows Server 2016
+
+Use:
+Execute in PowerShell as "Administrator"
+
+Collects the following information:
+# 1. Test AD/PowerShell
+# 2. Domain controllers diagnostics    (dcdiag /v /e /c) - To be Added to Report.html
+# 3. AD Replication summary    (repadmin /replsummary) - To be Added to Report.html
+# 4. AD Replication queue    (repadmin /queue) - To be Added to Report.html
+# 5. AD Replication status    (repadmin /showrepl) - To be Added to Report.html
+# 6. AD Replication synchronization    (repadmin /syncall) - To be Added to Report.html
+# 7. Force KCC recalculate topology    (repadmin /kcc) - To be Added to Report.html
+# 8. Force replication    repadmin /replicate <Dest_DSA_List> <Naming Context> /allsources [/force] [/async] [/full] [/addref] [/readonly] - To be Added to Report.html
+# 9. Domain controllers list  - To be Added to Report.html
+# 10. DNS services & servers - To be Added to Report.html
+# 11. DHCP - To be Added to Report.html
+# 12. AD Sites & Services - To be Added to Report.html
+# 12. AD Trusts - To be Added to Report.html
+# 13. Users with password set to never expire - To be Added to Report.html    
+# 14. Users not logged on over 90 days - To be Added to Report.html
+# 15. Computers with expired password- To be Added to Report.html
+# 17. Compress the logs (requires PowerShell 5+)
+
+Microsoft KB:
+================================
+System Information
+https://URL1#
+
+How to xxx:
+https://URL2#
+
+#########################################################################>
+<# Feedback:
+##############################################################
+# feedback 
+#############################################################################
+
+###########################Define Variables##################################
+#>
+
+$reportpath = ".\ADReportIBM.htm" 
+
+if((test-path $reportpath) -like $false)
+{
+new-item $reportpath -type file
+}
+$smtphost = "smtp.gmail.com" 
+$from = "DoNotReply@gmail.com" 
+$email1 = "pvillaroga@gmail.com"
+$timeout = "60"
+
+###############################HTml Report Content############################
+$report = $reportpath
+
+Clear-Content $report 
+Add-Content $report "<html>" 
+Add-Content $report "<head>" 
+Add-Content $report "<meta http-equiv='Content-Type' content='text/html; charset=iso-8859-1'>" 
+Add-Content $report '<title>AD Status Report</title>' 
+add-content $report '<STYLE TYPE="text/css">' 
+add-content $report  "<!--" 
+add-content $report  "td {" 
+add-content $report  "font-family: Tahoma;" 
+add-content $report  "font-size: 11px;" 
+add-content $report  "border-top: 1px solid #999999;" 
+add-content $report  "border-right: 1px solid #999999;" 
+add-content $report  "border-bottom: 1px solid #999999;" 
+add-content $report  "border-left: 1px solid #999999;" 
+add-content $report  "padding-top: 0px;" 
+add-content $report  "padding-right: 0px;" 
+add-content $report  "padding-bottom: 0px;" 
+add-content $report  "padding-left: 0px;" 
+add-content $report  "}" 
+add-content $report  "body {" 
+add-content $report  "margin-left: 5px;" 
+add-content $report  "margin-top: 5px;" 
+add-content $report  "margin-right: 0px;" 
+add-content $report  "margin-bottom: 10px;" 
+add-content $report  "" 
+add-content $report  "table {" 
+add-content $report  "border: thin solid #000000;" 
+add-content $report  "}" 
+add-content $report  "-->" 
+add-content $report  "</style>" 
+Add-Content $report "</head>" 
+Add-Content $report "<body>" 
+add-content $report  "<table width='100%'>" 
+add-content $report  "<tr bgcolor='Lavender'>" 
+add-content $report  "<td colspan='7' height='25' align='center'>" 
+add-content $report  "<font face='tahoma' color='#003399' size='4'><strong>Active Directory Health Check</strong></font>" 
+add-content $report  "</td>" 
+add-content $report  "</tr>" 
+add-content $report  "</table>" 
+ 
+add-content $report  "<table width='100%'>" 
+Add-Content $report  "<tr bgcolor='IndianRed'>" 
+Add-Content $report  "<td width='5%' align='center'><B>Identity</B></td>" 
+Add-Content $report  "<td width='10%' align='center'><B>PingSTatus</B></td>" 
+Add-Content $report  "<td width='10%' align='center'><B>NetlogonService</B></td>" 
+Add-Content $report  "<td width='10%' align='center'><B>NTDSService</B></td>" 
+Add-Content $report  "<td width='10%' align='center'><B>DNSServiceStatus</B></td>" 
+Add-Content $report  "<td width='10%' align='center'><B>NetlogonsTest</B></td>"
+Add-Content $report  "<td width='10%' align='center'><B>ReplicationTest</B></td>"
+Add-Content $report  "<td width='10%' align='center'><B>ServicesTest</B></td>"
+Add-Content $report  "<td width='10%' align='center'><B>AdvertisingTest</B></td>"
+Add-Content $report  "<td width='10%' align='center'><B>FSMOCheckTest</B></td>"
+ 
+Add-Content $report "</tr>" 
+
+#####################################Get ALL DC Servers#################################
+$getForest = [system.directoryservices.activedirectory.Forest]::GetCurrentForest()
+
+$DCServers = $getForest.domains | ForEach-Object {$_.DomainControllers} | ForEach-Object {$_.Name} 
+
+
+################Ping Test######
+
+foreach ($DC in $DCServers){
+$Identity = $DC
+                Add-Content $report "<tr>"
+if ( Test-Connection -ComputerName $DC -Count 1 -ErrorAction SilentlyContinue ) {
+Write-Host $DC `t $DC `t Ping Success -ForegroundColor Green
+ 
+		Add-Content $report "<td bgcolor= 'GainsBoro' align=center>  <B> $Identity</B></td>" 
+                Add-Content $report "<td bgcolor= 'Aquamarine' align=center>  <B>Success</B></td>" 
+
+                ##############Netlogon Service Status################
+		$serviceStatus = start-job -scriptblock {get-service -ComputerName $($args[0]) -Name "Netlogon" -ErrorAction SilentlyContinue} -ArgumentList $DC
+                wait-job $serviceStatus -timeout $timeout
+                if($serviceStatus.state -like "Running")
+                {
+                 Write-Host $DC `t Netlogon Service TimeOut -ForegroundColor Yellow
+                 Add-Content $report "<td bgcolor= 'Yellow' align=center><B>NetlogonTimeout</B></td>"
+                 stop-job $serviceStatus
+                }
+                else
+                {
+                $serviceStatus1 = Receive-job $serviceStatus
+                 if ($serviceStatus1.status -eq "Running") {
+ 		   Write-Host $DC `t $serviceStatus1.name `t $serviceStatus1.status -ForegroundColor Green 
+         	   $svcName = $serviceStatus1.name 
+         	   $svcState = $serviceStatus1.status          
+         	   Add-Content $report "<td bgcolor= 'Aquamarine' align=center><B>$svcState</B></td>" 
+                  }
+                 else 
+                  { 
+       		  Write-Host $DC `t $serviceStatus1.name `t $serviceStatus1.status -ForegroundColor Red 
+         	  $svcName = $serviceStatus1.name 
+         	  $svcState = $serviceStatus1.status          
+         	  Add-Content $report "<td bgcolor= 'Red' align=center><B>$svcState</B></td>" 
+                  } 
+                }
+               ######################################################
+                ##############NTDS Service Status################
+		$serviceStatus = start-job -scriptblock {get-service -ComputerName $($args[0]) -Name "NTDS" -ErrorAction SilentlyContinue} -ArgumentList $DC
+                wait-job $serviceStatus -timeout $timeout
+                if($serviceStatus.state -like "Running")
+                {
+                 Write-Host $DC `t NTDS Service TimeOut -ForegroundColor Yellow
+                 Add-Content $report "<td bgcolor= 'Yellow' align=center><B>NTDSTimeout</B></td>"
+                 stop-job $serviceStatus
+                }
+                else
+                {
+                $serviceStatus1 = Receive-job $serviceStatus
+                 if ($serviceStatus1.status -eq "Running") {
+ 		   Write-Host $DC `t $serviceStatus1.name `t $serviceStatus1.status -ForegroundColor Green 
+         	   $svcName = $serviceStatus1.name 
+         	   $svcState = $serviceStatus1.status          
+         	   Add-Content $report "<td bgcolor= 'Aquamarine' align=center><B>$svcState</B></td>" 
+                  }
+                 else 
+                  { 
+       		  Write-Host $DC `t $serviceStatus1.name `t $serviceStatus1.status -ForegroundColor Red 
+         	  $svcName = $serviceStatus1.name 
+         	  $svcState = $serviceStatus1.status          
+         	  Add-Content $report "<td bgcolor= 'Red' align=center><B>$svcState</B></td>" 
+                  } 
+                }
+               ######################################################
+                ##############DNS Service Status################
+		$serviceStatus = start-job -scriptblock {get-service -ComputerName $($args[0]) -Name "DNS" -ErrorAction SilentlyContinue} -ArgumentList $DC
+                wait-job $serviceStatus -timeout $timeout
+                if($serviceStatus.state -like "Running")
+                {
+                 Write-Host $DC `t DNS Server Service TimeOut -ForegroundColor Yellow
+                 Add-Content $report "<td bgcolor= 'Yellow' align=center><B>DNSTimeout</B></td>"
+                 stop-job $serviceStatus
+                }
+                else
+                {
+                $serviceStatus1 = Receive-job $serviceStatus
+                 if ($serviceStatus1.status -eq "Running") {
+ 		   Write-Host $DC `t $serviceStatus1.name `t $serviceStatus1.status -ForegroundColor Green 
+         	   $svcName = $serviceStatus1.name 
+         	   $svcState = $serviceStatus1.status          
+         	   Add-Content $report "<td bgcolor= 'Aquamarine' align=center><B>$svcState</B></td>" 
+                  }
+                 else 
+                  { 
+       		  Write-Host $DC `t $serviceStatus1.name `t $serviceStatus1.status -ForegroundColor Red 
+         	  $svcName = $serviceStatus1.name 
+         	  $svcState = $serviceStatus1.status          
+         	  Add-Content $report "<td bgcolor= 'Red' align=center><B>$svcState</B></td>" 
+                  } 
+                }
+               ######################################################
+
+               ####################Netlogons status##################
+               add-type -AssemblyName microsoft.visualbasic 
+               $cmp = "microsoft.visualbasic.strings" -as [type]
+               $sysvol = start-job -scriptblock {dcdiag /test:netlogons /s:$($args[0])} -ArgumentList $DC
+               wait-job $sysvol -timeout $timeout
+               if($sysvol.state -like "Running")
+               {
+               Write-Host $DC `t Netlogons Test TimeOut -ForegroundColor Yellow
+               Add-Content $report "<td bgcolor= 'Yellow' align=center><B>NetlogonsTimeout</B></td>"
+               stop-job $sysvol
+               }
+               else
+               {
+               $sysvol1 = Receive-job $sysvol
+               if($cmp::instr($sysvol1, "passed test NetLogons"))
+                  {
+                  Write-Host $DC `t Netlogons Test passed -ForegroundColor Green
+                  Add-Content $report "<td bgcolor= 'Aquamarine' align=center><B>NetlogonsPassed</B></td>"
+                  }
+               else
+                  {
+                  Write-Host $DC `t Netlogons Test Failed -ForegroundColor Red
+                  Add-Content $report "<td bgcolor= 'Red' align=center><B>NetlogonsFail</B></td>"
+                  }
+                }
+               ########################################################
+               ####################Replications status##################
+               add-type -AssemblyName microsoft.visualbasic 
+               $cmp = "microsoft.visualbasic.strings" -as [type]
+               $sysvol = start-job -scriptblock {dcdiag /test:Replications /s:$($args[0])} -ArgumentList $DC
+               wait-job $sysvol -timeout $timeout
+               if($sysvol.state -like "Running")
+               {
+               Write-Host $DC `t Replications Test TimeOut -ForegroundColor Yellow
+               Add-Content $report "<td bgcolor= 'Yellow' align=center><B>ReplicationsTimeout</B></td>"
+               stop-job $sysvol
+               }
+               else
+               {
+               $sysvol1 = Receive-job $sysvol
+               if($cmp::instr($sysvol1, "passed test Replications"))
+                  {
+                  Write-Host $DC `t Replications Test passed -ForegroundColor Green
+                  Add-Content $report "<td bgcolor= 'Aquamarine' align=center><B>ReplicationsPassed</B></td>"
+                  }
+               else
+                  {
+                  Write-Host $DC `t Replications Test Failed -ForegroundColor Red
+                  Add-Content $report "<td bgcolor= 'Red' align=center><B>ReplicationsFail</B></td>"
+                  }
+                }
+               ########################################################
+	       ####################Services status##################
+               add-type -AssemblyName microsoft.visualbasic 
+               $cmp = "microsoft.visualbasic.strings" -as [type]
+               $sysvol = start-job -scriptblock {dcdiag /test:Services /s:$($args[0])} -ArgumentList $DC
+               wait-job $sysvol -timeout $timeout
+               if($sysvol.state -like "Running")
+               {
+               Write-Host $DC `t Services Test TimeOut -ForegroundColor Yellow
+               Add-Content $report "<td bgcolor= 'Yellow' align=center><B>ServicesTimeout</B></td>"
+               stop-job $sysvol
+               }
+               else
+               {
+               $sysvol1 = Receive-job $sysvol
+               if($cmp::instr($sysvol1, "passed test Services"))
+                  {
+                  Write-Host $DC `t Services Test passed -ForegroundColor Green
+                  Add-Content $report "<td bgcolor= 'Aquamarine' align=center><B>ServicesPassed</B></td>"
+                  }
+               else
+                  {
+                  Write-Host $DC `t Services Test Failed -ForegroundColor Red
+                  Add-Content $report "<td bgcolor= 'Red' align=center><B>ServicesFail</B></td>"
+                  }
+                }
+               ########################################################
+	       ####################Advertising status##################
+               add-type -AssemblyName microsoft.visualbasic 
+               $cmp = "microsoft.visualbasic.strings" -as [type]
+               $sysvol = start-job -scriptblock {dcdiag /test:Advertising /s:$($args[0])} -ArgumentList $DC
+               wait-job $sysvol -timeout $timeout
+               if($sysvol.state -like "Running")
+               {
+               Write-Host $DC `t Advertising Test TimeOut -ForegroundColor Yellow
+               Add-Content $report "<td bgcolor= 'Yellow' align=center><B>AdvertisingTimeout</B></td>"
+               stop-job $sysvol
+               }
+               else
+               {
+               $sysvol1 = Receive-job $sysvol
+               if($cmp::instr($sysvol1, "passed test Advertising"))
+                  {
+                  Write-Host $DC `t Advertising Test passed -ForegroundColor Green
+                  Add-Content $report "<td bgcolor= 'Aquamarine' align=center><B>AdvertisingPassed</B></td>"
+                  }
+               else
+                  {
+                  Write-Host $DC `t Advertising Test Failed -ForegroundColor Red
+                  Add-Content $report "<td bgcolor= 'Red' align=center><B>AdvertisingFail</B></td>"
+                  }
+                }
+               ########################################################
+	       ####################FSMOCheck status##################
+               add-type -AssemblyName microsoft.visualbasic 
+               $cmp = "microsoft.visualbasic.strings" -as [type]
+               $sysvol = start-job -scriptblock {dcdiag /test:FSMOCheck /s:$($args[0])} -ArgumentList $DC
+               wait-job $sysvol -timeout $timeout
+               if($sysvol.state -like "Running")
+               {
+               Write-Host $DC `t FSMOCheck Test TimeOut -ForegroundColor Yellow
+               Add-Content $report "<td bgcolor= 'Yellow' align=center><B>FSMOCheckTimeout</B></td>"
+               stop-job $sysvol
+               }
+               else
+               {
+               $sysvol1 = Receive-job $sysvol
+               if($cmp::instr($sysvol1, "passed test FsmoCheck"))
+                  {
+                  Write-Host $DC `t FSMOCheck Test passed -ForegroundColor Green
+                  Add-Content $report "<td bgcolor= 'Aquamarine' align=center><B>FSMOCheckPassed</B></td>"
+                  }
+               else
+                  {
+                  Write-Host $DC `t FSMOCheck Test Failed -ForegroundColor Red
+                  Add-Content $report "<td bgcolor= 'Red' align=center><B>FSMOCheckFail</B></td>"
+                  }
+                }
+               ########################################################
+                
+} 
+else
+              {
+Write-Host $DC `t $DC `t Ping Fail -ForegroundColor Red
+		Add-Content $report "<td bgcolor= 'GainsBoro' align=center>  <B> $Identity</B></td>" 
+                Add-Content $report "<td bgcolor= 'Red' align=center>  <B>Ping Fail</B></td>" 
+		Add-Content $report "<td bgcolor= 'Red' align=center>  <B>Ping Fail</B></td>" 
+		Add-Content $report "<td bgcolor= 'Red' align=center>  <B>Ping Fail</B></td>" 
+		Add-Content $report "<td bgcolor= 'Red' align=center>  <B>Ping Fail</B></td>" 
+		Add-Content $report "<td bgcolor= 'Red' align=center>  <B>Ping Fail</B></td>"
+		Add-Content $report "<td bgcolor= 'Red' align=center>  <B>Ping Fail</B></td>"
+		Add-Content $report "<td bgcolor= 'Red' align=center>  <B>Ping Fail</B></td>"
+		Add-Content $report "<td bgcolor= 'Red' align=center>  <B>Ping Fail</B></td>"
+		Add-Content $report "<td bgcolor= 'Red' align=center>  <B>Ping Fail</B></td>"
+}         
+       
+} 
+
+Add-Content $report "</tr>"
+############################################Close HTMl Tables###########################
+
+
+Add-content $report  "</table>" 
+Add-Content $report "</body>" 
+Add-Content $report "</html>" 
+
+
+########################################################################################
+#############################################Send Email#################################
+
+
+$subject = "Active Directory Health Monitor" 
+$body = Get-Content ".\ADreport.htm" 
+$smtp= New-Object System.Net.Mail.SmtpClient $smtphost 
+$msg = New-Object System.Net.Mail.MailMessage 
+$msg.To.Add($email1)
+$msg.from = $from
+$msg.subject = $subject
+$msg.body = $body 
+$msg.isBodyhtml = $true 
+$smtp.send($msg) 
+
+########################################################################################
+
+########################################################################################
+ 
+         	
+		
